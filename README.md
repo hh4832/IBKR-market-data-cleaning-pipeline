@@ -10,6 +10,11 @@
 
 ## Use in Colab (recommended)
 
+### Colab running-kernel module cache (v0.1.1 hotfix)
+
+If the Notebook prints the newest Git SHA but raises `TypeError: Config.__init__() got an unexpected keyword argument 'audit_start_ny'`, the Colab **kernel still holds an old `ibkr_qc.pipeline.Config` Python class**. Git pull/pip install update disk, not already imported Python modules. The first code cell now removes stale `ibkr_qc.*` entries from `sys.modules` **before** importing the package; the execution cell reloads `ibkr_qc.pipeline` and checks for the required constructor arguments. Reopen the latest Notebook and select **Runtime → Restart session → Run all**. This issue is unrelated to market data or checkpoint quality.
+
+
 Open [`notebooks/run_soxx_qc.ipynb`](notebooks/run_soxx_qc.ipynb) on Google Colab. The v0.1.1 Notebook explicitly mounts **My Drive** and uses `/content/drive/MyDrive/IBKR_SOXX_QC_PERSISTENT_CACHE_V011` as a persistent checkpoint: this is separate from both original source and archived QA results. Re-running after interruption verifies each cached normalized chunk's SHA256 and original Drive file identity/metadata before reuse. Failed/incomplete chunks are never marked complete. A later FULL run can reuse the earlier five PILOT checkpoints if no source or normalization policy has changed. The checkpoint folder may grow large (~thousands of parquet and JSON files); do not delete it before FULL completes.
 
 The Colab runtime **must** install a compatible Python and `pyarrow`. Authenticate with Google OAuth, review the **hardcoded public folder IDs** shown below, and run the pilot first. The Notebook uses Google's authenticated Drive API directly, so it does not depend on the `IKBR` folder being mounted in `My Drive` or knowing its full filesystem path. OAuth permission can see and create files in Drive; the pipeline only creates a **new timestamped child folder** in the designated output parent, never deletes or modifies sources.

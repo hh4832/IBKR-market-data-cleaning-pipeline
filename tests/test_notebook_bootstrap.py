@@ -22,3 +22,19 @@ def test_full_has_persistent_cache_and_explicit_bounds():
     assert 'MyDrive/IBKR_SOXX_QC_PERSISTENT_CACHE_V011' in config
     assert 'AUDIT_START_NY' in config and 'AUDIT_END_NY' in config
     assert 'MAX_CHUNKS = 5' in config
+
+def test_bootstrap_invalidates_stale_ibkr_modules_before_import():
+    nb = json.loads((Path(__file__).resolve().parents[1] / "notebooks/run_soxx_qc.ipynb").read_text())
+    source = "".join(nb["cells"][1]["source"])
+    ast.parse(source)
+    assert 'name == "ibkr_qc" or name.startswith("ibkr_qc.")' in source
+    assert source.index('del sys.modules[name]') < source.index('import ibkr_qc\n')
+    assert "STALE_IBKR_QC_CONFIG" in source
+
+
+def test_run_cell_reload_config_before_constructing_dataclass():
+    nb = json.loads((Path(__file__).resolve().parents[1] / "notebooks/run_soxx_qc.ipynb").read_text())
+    source = "".join(nb["cells"][4]["source"])
+    ast.parse(source)
+    assert source.index("importlib.reload(_pipeline)") < source.index("config = Config(")
+    assert "audit_start_ny" in source and "audit_end_ny" in source
