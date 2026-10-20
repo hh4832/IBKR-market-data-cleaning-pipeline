@@ -39,8 +39,9 @@ def list_parquet_files(service, folder_id: str) -> list[dict]:
         page=response.get("nextPageToken")
         if not page:
             break
-    # Google Drive permits distinct file IDs to share the same filename.
-    # Preserve every object: downstream cache keys use the Drive file ID.
+    # Google Drive permits distinct file IDs to share the same file name.
+    # Keep every ID: downstream caching is ID-keyed and bar duplicates are
+    # resolved only after exact OHLCV checks. Never arbitrarily choose a copy.
     ids = [f["id"] for f in result]
     if len(set(ids)) != len(ids):
         raise ValueError("DRIVE_PAGINATION_REPEATED_FILE_ID")
@@ -48,10 +49,10 @@ def list_parquet_files(service, folder_id: str) -> list[dict]:
 
 
 def filename_collision_audit(sources: list[dict]) -> list[dict]:
-    """Report same-name files without discarding a single source ID.
+    """Record same-name Drive objects without discarding any of their IDs.
 
-    Equal non-empty Drive MD5 and size indicates byte-identical uploads.
-    Different or absent MD5 metadata remains unresolved for review.
+    Matching non-empty Drive MD5+size provides evidence of byte-identical
+    uploads; any mismatch or unknown digest requires manual review.
     """
     groups: dict[str, list[dict]] = defaultdict(list)
     for source in sources:
@@ -71,10 +72,12 @@ def filename_collision_audit(sources: list[dict]) -> list[dict]:
         else:
             state = "UNVERIFIED_CONTENT_REVIEW_REQUIRED"
         rows.append({
-            "source_name": name, "file_count": len(members),
+            "source_name": name,
+            "file_count": len(members),
             "state": state,
             "drive_file_ids": "|".join(str(m.get("id") or "") for m in members),
-            "sizes": "|".join(sizes), "md5_checksums": "|".join(md5s),
+            "sizes": "|".join(sizes),
+            "md5_checksums": "|".join(md5s),
         })
     return rows
 
@@ -87,7 +90,9 @@ def cached_download(service, item: dict, cache_dir: Path, *, retries: int=3) -> 
     if target.exists():
         if target.stat().st_size == int(item.get("size", -1)):
             md5=item.get("md5Checksum")
-            if not md5 or hashlib.md5(target.read_bytes()).hexdigest().lower()==md5.lower():
+            # Without a remote content hash, same-size data could have changed;
+            # never trust a persistent cache based on size alone.
+            if md5 and hashlib.md5(target.read_bytes()).hexdigest().lower()==md5.lower():
                 return target
         target.unlink()
     for attempt in range(retries):
@@ -119,6 +124,15 @@ def upload_run(service, local_run: Path, target_parent_id: str) -> str:
     folder=service.files().create(body={"name":local_run.name,"mimeType":"application/vnd.google-apps.folder", "parents":[target_parent_id]},
                                   fields="id,webViewLink",supportsAllDrives=True).execute()
     run_id=folder["id"]
+    run_url="https://drive.google.com/drive/folders/"+run_id
+    # Embed the actual created Drive location before archiving run_info.json.
+    # Otherwise Drive's archived run_info differs from the local copy.
+    run_info_path=local_run / "run_info.json"
+    if run_info_path.is_file():
+        import json
+        details=json.loads(run_info_path.read_text(encoding="utf-8"))
+        details["drive_run_url"]=run_url
+        run_info_path.write_text(json.dumps(details,indent=2,ensure_ascii=False,default=str)+"\n",encoding="utf-8")
     for path in tqdm(sorted(local_run.rglob("*")),desc="Upload run results to Drive"):
         if not path.is_file():
             continue

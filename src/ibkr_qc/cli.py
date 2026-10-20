@@ -17,6 +17,8 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--drive-output-id",help="Target Drive parent folder ID for timestamped run archive")
     p.add_argument("--max-chunks",type=int,default=5,help="Pilot size (default 5). Zero = full source scan")
     p.add_argument("--assume-naive-utc",action="store_true",help="Explicitly allow timezone-naive input as UTC after verifying provider semantics")
+    p.add_argument("--audit-start-ny",default=None,help="Explicit NYSE calendar first date (YYYY-MM-DD)")
+    p.add_argument("--audit-end-ny",default=None,help="Explicit NYSE calendar last date (YYYY-MM-DD)")
     p.add_argument("--git-sha",default=None)
     return p
 
@@ -30,7 +32,8 @@ def main(argv=None):
     cfg=Config(source_dir=opts.source_dir,drive_source_id=opts.drive_source_id,
                output_dir=opts.output_dir,cache_dir=opts.cache_dir,
                drive_output_id=opts.drive_output_id,max_chunks=opts.max_chunks,
-               assume_naive_utc=opts.assume_naive_utc,git_sha=opts.git_sha or git_sha())
+               assume_naive_utc=opts.assume_naive_utc,git_sha=opts.git_sha or git_sha(),
+               audit_start_ny=opts.audit_start_ny,audit_end_ny=opts.audit_end_ny)
     out=run(cfg,service=service)
     print("Audit results:",out)
     print((out/"run_info.json").read_text(encoding="utf-8"))

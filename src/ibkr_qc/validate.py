@@ -127,7 +127,8 @@ def market_labels(frame: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def daily_coverage(frame: pd.DataFrame, *, calendar_name: str = "NYSE") -> pd.DataFrame:
+def daily_coverage(frame: pd.DataFrame, *, calendar_name: str = "NYSE",
+                   schedule: pd.DataFrame | None = None) -> pd.DataFrame:
     """Calendar-aware 1-minute regular-session coverage, including known half-days.
 
     Assumes timestamps label bar starts. This is a provisional QA hypothesis,
@@ -140,7 +141,8 @@ def daily_coverage(frame: pd.DataFrame, *, calendar_name: str = "NYSE") -> pd.Da
         frame = market_labels(frame)
     calendar = mcal.get_calendar(calendar_name)
     dates = pd.to_datetime(frame["date_ny"])
-    schedule = calendar.schedule(start_date=dates.min().date(), end_date=dates.max().date())
+    if schedule is None:
+        schedule = calendar.schedule(start_date=dates.min().date(), end_date=dates.max().date())
     if schedule.empty:
         raise QCError("NO_CALENDAR_SESSIONS")
     observed_by_date = {key: pd.DatetimeIndex(group["timestamp_utc"].drop_duplicates()) for key, group in frame.groupby("date_ny", sort=False)}
@@ -167,13 +169,15 @@ def daily_coverage(frame: pd.DataFrame, *, calendar_name: str = "NYSE") -> pd.Da
     return pd.DataFrame(rows)
 
 
-def coverage_gaps(frame: pd.DataFrame, *, calendar_name: str = "NYSE") -> pd.DataFrame:
+def coverage_gaps(frame: pd.DataFrame, *, calendar_name: str = "NYSE",
+                  schedule: pd.DataFrame | None = None) -> pd.DataFrame:
     """Emit missing minutes for RTH only; never forward-fill and never infer RTH from total daily count."""
     import pandas_market_calendars as mcal
     cal = mcal.get_calendar(calendar_name)
     start_date = frame["timestamp_utc"].min().tz_convert("America/New_York").date()
     end_date = frame["timestamp_utc"].max().tz_convert("America/New_York").date()
-    sched = cal.schedule(start_date=start_date,end_date=end_date)
+    sched = (schedule if schedule is not None else
+             cal.schedule(start_date=start_date,end_date=end_date))
     missing = []
     if "date_ny" not in frame:
         frame = market_labels(frame)

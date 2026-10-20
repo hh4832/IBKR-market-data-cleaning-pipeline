@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ibkr-market-data-cleaning-pipeline"
-version = "0.1.0"
+version = "0.1.1"
 description = "Immutable-source, auditable quality-control pipeline for IBKR SOXX 1-minute historical data"
 requires-python = ">=3.11"
 dependencies = [
