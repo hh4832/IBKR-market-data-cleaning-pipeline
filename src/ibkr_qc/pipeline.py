@@ -63,6 +63,8 @@ def run(config: Config, *, service=None) -> Path:
         sources=list_parquet_files(service,config.drive_source_id)
     if not sources:
         raise ValueError("NO_PARQUET_FILES_FOUND_IN_SOXX_CHUNKS")
+    from .drive_io import filename_collision_audit
+    collisions=filename_collision_audit(sources)
     total_count=len(sources)
     selected=sources if config.max_chunks == 0 else sources[:config.max_chunks]
     base=config.output_dir
@@ -76,6 +78,8 @@ def run(config: Config, *, service=None) -> Path:
     stage=out / "staging"
     stage.mkdir()
     cache=config.cache_dir or (base / "download_cache")
+    collision_columns=["source_name","file_count","state","drive_file_ids","sizes","md5_checksums"]
+    _csv(out / "duplicate_source_filenames.csv", pd.DataFrame(collisions,columns=collision_columns))
     quality=[]
     manifests=[]
     years=set()
@@ -116,18 +120,24 @@ def run(config: Config, *, service=None) -> Path:
                 folder=stage / str(year)
                 folder.mkdir(exist_ok=True)
                 g.to_parquet(folder / f"{i:05d}.parquet",index=False)
-            quality.append({"source_name":source["name"],"state":"PASS_CHUNK","original_rows":norm.original_rows,
+            quality.append({"source_name":source["name"],"source_id":source.get("id"),"state":"PASS_CHUNK","original_rows":norm.original_rows,
                             "clean_rows":len(norm.frame),"exact_duplicate_rows":norm.exact_duplicates,"timestamp_field":norm.time_field,
                             "first_utc":norm.frame["timestamp_utc"].min().isoformat(),"last_utc":norm.frame["timestamp_utc"].max().isoformat(),"error":"","source_metadata":json.dumps(chunk_metadata,default=str)})
             manifests.append({**source_info,"sha256":digest,"source_metadata":chunk_metadata,"state":"NORMALIZED"})
         except Exception as exc:
-            quality.append({"source_name":source["name"],"state":"INVALID_CHUNK","original_rows":None,
+            quality.append({"source_name":source["name"],"source_id":source.get("id"),"state":"INVALID_CHUNK","original_rows":None,
                             "clean_rows":None,"exact_duplicate_rows":None,"timestamp_field":None,"first_utc":None,"last_utc":None,
                             "error":f"{type(exc).__name__}: {str(exc)[:300]}","source_metadata":""})
             manifests.append({**source_info,"sha256":None,"state":"FAILED"})
     _csv(out / "chunk_quality.csv",pd.DataFrame(quality))
-    _write_json(out / "source_manifest.json",{"symbol":EXPECTED_SYMBOL,"conId":EXPECTED_CONID,"files":manifests})
+    _write_json(out / "source_manifest.json",{"symbol":EXPECTED_SYMBOL,"conId":EXPECTED_CONID,
+                                                 "filename_collisions":collisions,"files":manifests})
     errors=[v for v in quality if v["state"]=="INVALID_CHUNK"]
+    for collision in collisions:
+        if collision["state"] != "BYTE_IDENTICAL_BY_DRIVE_MD5":
+            errors.append({"source_name":collision["source_name"],
+                           "error":f"SAME_NAME_SOURCE_AMBIGUITY: {collision['state']}",
+                           "source_ids":collision["drive_file_ids"]})
     duplicate_cross=0
     all_timestamp=[]
     action_flags=[]
@@ -166,6 +176,8 @@ def run(config: Config, *, service=None) -> Path:
         "pipeline":"ibkr-soxx-qc","version":"0.1.0","symbol":"SOXX","conId":EXPECTED_CONID,
         "mode":"FULL" if config.max_chunks == 0 else "PILOT", "source_kind":"GOOGLE_DRIVE" if config.drive_source_id else "LOCAL",
         "source_folder_id":config.drive_source_id,"total_input_files_listed":total_count,"files_selected":len(selected),
+        "duplicate_filename_groups":len(collisions),
+        "unresolved_duplicate_filename_groups":sum(v["state"] != "BYTE_IDENTICAL_BY_DRIVE_MD5" for v in collisions),
         "file_failures":errors,"cross_chunk_duplicates_removed":duplicate_cross,
         "rth_missing_minutes":provisional_missing,"missing_intervals":len(gaps),"large_move_candidates":len(action),
         "start_utc":times["timestamp_utc"].min().isoformat(),"end_utc":times["timestamp_utc"].max().isoformat(),

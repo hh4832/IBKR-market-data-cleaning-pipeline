@@ -12,3 +12,5 @@
 - Synthetic pytest pass is not proof of historical raw data correctness; real Colab Drive audit requires valid OAuth and source bytes.
 - Changes to data semantics need regression tests, README update and review of the QA manifest. Never claim `research_ready=True` while source metadata and split adjustment are unverified.
 - After testing, changes may be committed/pushed only as authorized by the current user task. Never use force push.
+
+- Google Drive permits duplicate file *names* with distinct file IDs; preserve all IDs and audit collisions with Drive MD5, size, and per-file SHA256. Never arbitrarily choose a same-name file; resolve duplicate bars only by exact OHLCV; metadata mismatch or missing MD5 is `REVIEW_REQUIRED`. Do not modify original chunks.

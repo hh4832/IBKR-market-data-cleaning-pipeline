@@ -1,6 +1,7 @@
 """Drive folder-ID I/O through Colab OAuth; never uses a public-link scraper."""
 from __future__ import annotations
 
+from collections import defaultdict
 import hashlib
 import io
 from pathlib import Path
@@ -38,9 +39,44 @@ def list_parquet_files(service, folder_id: str) -> list[dict]:
         page=response.get("nextPageToken")
         if not page:
             break
-    if len({f["name"] for f in result}) != len(result):
-        raise ValueError("AMBIGUOUS_DUPLICATE_DRIVE_FILENAMES")
-    return sorted(result,key=lambda f:f["name"])
+    # Google Drive permits distinct file IDs to share the same filename.
+    # Preserve every object: downstream cache keys use the Drive file ID.
+    ids = [f["id"] for f in result]
+    if len(set(ids)) != len(ids):
+        raise ValueError("DRIVE_PAGINATION_REPEATED_FILE_ID")
+    return sorted(result, key=lambda f: (f["name"], f["id"]))
+
+
+def filename_collision_audit(sources: list[dict]) -> list[dict]:
+    """Report same-name files without discarding a single source ID.
+
+    Equal non-empty Drive MD5 and size indicates byte-identical uploads.
+    Different or absent MD5 metadata remains unresolved for review.
+    """
+    groups: dict[str, list[dict]] = defaultdict(list)
+    for source in sources:
+        groups[source["name"]].append(source)
+
+    rows = []
+    for name, members in sorted(groups.items()):
+        if len(members) < 2:
+            continue
+        sizes = [str(m.get("size") or "") for m in members]
+        md5s = [str(m.get("md5Checksum") or "").lower() for m in members]
+        all_md5_known = all(md5s)
+        if len(set(sizes)) > 1 or (all_md5_known and len(set(md5s)) > 1):
+            state = "DIFFERENT_METADATA_REVIEW_REQUIRED"
+        elif all_md5_known and len(set(md5s)) == 1 and len(set(sizes)) == 1 and sizes[0]:
+            state = "BYTE_IDENTICAL_BY_DRIVE_MD5"
+        else:
+            state = "UNVERIFIED_CONTENT_REVIEW_REQUIRED"
+        rows.append({
+            "source_name": name, "file_count": len(members),
+            "state": state,
+            "drive_file_ids": "|".join(str(m.get("id") or "") for m in members),
+            "sizes": "|".join(sizes), "md5_checksums": "|".join(md5s),
+        })
+    return rows
 
 
 def cached_download(service, item: dict, cache_dir: Path, *, retries: int=3) -> Path:

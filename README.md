@@ -38,9 +38,9 @@ pytest -q
 
 1. Strict contract provenance: named source folder `SOXX_12658194`, optional per-row symbol and conId validation; keep every input Drive ID and SHA256 in `source_manifest.json`.
 2. Reject timezone-ambiguous, malformed or off-minute timestamps; reject null/non-numeric/invalid OHLCV. Zero volume is **not** assumed to indicate a missing candle.
-3. Consolidate **only exact timestamp + OHLCV duplicates**, including across chunks and within NY calendar year. Conflicting same-timestamp OHLCV causes `REVIEW_REQUIRED`; never pick the first/last conflicting observation.
+3. Drive can contain different file IDs using the same filename. Retain every ID in stable (filename, file ID) order, cache/download by ID and record all collisions in `duplicate_source_filenames.csv`. Matching MD5 and size indicates byte-identical files; missing or mismatched metadata remains `REVIEW_REQUIRED`. After reading bars, consolidate **only exact timestamp + OHLCV duplicates**; same timestamp with conflicting data is never silently resolved.
 4. Convert UTC to `America/New_York` (DST handled by IANA timezone). Compute expected regular trading minutes from the **NYSE historical session calendar**, including known early closes. Expected minutes are conventionally **bar-start labelled**; that label convention is **not independently verified** for current IBKR source.
-5. Save `daily_coverage.csv`, `rth_missing_intervals.csv`, `large_move_candidates.csv`, `chunk_quality.csv`, yearly Parquet, `source_manifest.json`, `run_info.json` and run notices. No forward-fill, retroactive price correction, resampling, synthetic bars or inferred split factors.
+5. Save `daily_coverage.csv`, `rth_missing_intervals.csv`, `large_move_candidates.csv`, `chunk_quality.csv`, `duplicate_source_filenames.csv`, yearly Parquet, `source_manifest.json`, `run_info.json` and run notices. No forward-fill, retroactive price correction, resampling, synthetic bars or inferred split factors.
 6. Flag large price changes for **review**. Do not automatically attribute them to splits; historical adjusted/unadjusted sources have not been reconciled.
 7. **`research_ready=false` in all v0.1.0 runs**, including those with 100% observed RTH coverage: source metadata may identify `use_rth`/`what_to_show` (explicitly audited from source), but corporate-action adjustment policy and IBKR bar-label convention remain unverified. A complete downloader checkpoint or successful API request is not proof of completeness.
 
@@ -79,3 +79,9 @@ Outputs are stored in a fresh folder `YYYYMMDD_HHMMSS_<GitSHA>_SOXX_<PILOT|FULL>
 - v0.4: CME Globex ES/NQ futures adapter (quarterly contracts, expiry policies, 1-minute session completeness, roll provenance), distinct from equity calendar logic.
 
 See [Development Prompt](docs/DEVELOPMENT_PROMPT_v0.1.0.md) and [AGENTS.md](AGENTS.md).
+
+## v0.1.1 — Google Drive same-name files hotfix
+
+Google Drive permits distinct file IDs with the same `end_YYYYMMDD...parquet` filename. Formerly the listing halted with `AMBIGUOUS_DUPLICATE_DRIVE_FILENAMES`. Now the paginator retains **all distinct IDs**, sorted by (name, ID), and records the complete collision list with file ID, size and Drive MD5. Source files are never renamed, deleted or overwritten. Verified matching MD5+size is labelled byte-identical by Drive metadata; conflicting or unknown metadata is marked `REVIEW_REQUIRED`. The pipeline still processes each distinct ID and merges only exact matching OHLCV records, preserving disagreement diagnostics. If the same ID is emitted twice during pagination, it raises `DRIVE_PAGINATION_REPEATED_FILE_ID` rather than double counting. The Colab notebook prints the first same-name groups before Pilot mode. This does not certify source data as research-ready.
+
+`google_auth_httplib2 ... per-request timeout` is a transport warning, not the cause of the previous duplicate-filename ValueError. Reopen the latest notebook from GitHub to use this fix.
