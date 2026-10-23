@@ -100,7 +100,7 @@ def run_nq_qc(service, config: NQRunConfig, *, cache_root: Path, output_root: Pa
     now=datetime.now(ZoneInfo("Asia/Taipei"))
     try:
         sha=subprocess.check_output(
-            ["git","rev-parse","--short=12","HEAD"],stderr=subprocess.DEVNULL,text=True
+            ["git","-C",str(Path(__file__).resolve().parents[2]),"rev-parse","--short=12","HEAD"],stderr=subprocess.DEVNULL,text=True
         ).strip()
     except (OSError,subprocess.CalledProcessError):
         sha="UNKNOWN"
