@@ -121,3 +121,16 @@ def test_source_contract_metadata_is_not_available_as_research_ready():
     # The validation output can be provisionally clean, but roll/calendar and
     # IBKR bar-start semantics still require confirmation before backtesting.
     assert NQRunConfig().max_contracts == 0
+
+
+def test_exact_boundary_bar_not_used_if_start_label():
+    times = pd.DatetimeIndex([
+        pd.Timestamp("2026-10-13 13:44", tz="Asia/Taipei"),
+        pd.Timestamp("2026-10-13 13:45", tz="Asia/Taipei"),
+        pd.Timestamp("2026-10-13 14:59", tz="Asia/Taipei"),
+    ]).tz_convert("UTC")
+    norm,_=normalize_nq(sample(times),SPEC)
+    out=anchor_prices(norm,SPEC,tolerance_minutes=2)
+    day=out.set_index("candidate_taipei_weekday").loc["2026-10-13"]
+    assert day["day_close_1345_observed_utc"] == times[0].isoformat()
+    assert day["day_close_1345_close"] == 100.0

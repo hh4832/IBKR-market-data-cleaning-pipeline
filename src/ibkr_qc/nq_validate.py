@@ -185,7 +185,7 @@ def audit_standard_globex(frame: pd.DataFrame, spec: NQContract) -> tuple[pd.Dat
 
 
 def anchor_prices(frame: pd.DataFrame, spec: NQContract, *, tolerance_minutes: int=2) -> pd.DataFrame:
-    """Find closest OBSERVED bar at/before specified Taipei clock anchors.
+    """Find closest OBSERVED bar strictly BEFORE each Taipei anchor.
 
     Separate contract outputs; never calculate cross-contract returns. No
     extrapolation, forward-fill or stitching. For summer-time 05:00 Taipei
@@ -214,7 +214,9 @@ def anchor_prices(frame: pd.DataFrame, spec: NQContract, *, tolerance_minutes: i
              "roll_policy":"UNDEFINED_DO_NOT_STITCH"}
         for name,clock in labels:
             stamp=clock.tz_convert("UTC")
-            loc=idx.searchsorted(stamp,side="right")-1
+            # Strictly preceding observed bar avoids selecting a bar that STARTS
+            # at the boundary and closes later (lookahead under start labels).
+            loc=idx.searchsorted(stamp,side="left")-1
             if loc>=0 and 0 <= (stamp-idx[loc]).total_seconds() <= tolerance_minutes*60:
                 row[name+"_close"]=float(src.iloc[loc]["close"])
                 row[name+"_observed_utc"]=idx[loc].isoformat()
