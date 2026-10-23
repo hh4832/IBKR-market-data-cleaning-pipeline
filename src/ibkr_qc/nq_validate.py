@@ -54,12 +54,17 @@ def normalize_nq(frame: pd.DataFrame, spec: NQContract) -> tuple[pd.DataFrame, d
     for col, expected in (("symbol", "NQ"), ("localSymbol", spec.local_symbol),
                           ("secType", "FUT"), ("what_to_show", "TRADES")):
         values = work[col].dropna().astype(str).unique().tolist()
-        if len(values) != 1 or values[0].upper() != expected.upper() or work[col].isna().any():
+        if (len(values) != 1 or values[0].upper() not in ({expected.upper(), spec.local_symbol.upper()} if col == "symbol" else {expected.upper()}) or work[col].isna().any()):
             raise QCError(f"NQ_METADATA_CONFLICT_{col}: {values[:4]}")
     if not pd.to_numeric(work.conId, errors="coerce").eq(spec.con_id).all():
         raise QCError("NQ_CONID_MISMATCH")
     if work["expiry"].isna().any() or work["expiry"].astype(str).nunique() != 1:
         raise QCError("NQ_EXPIRY_MISMATCH")
+    month={"H":3,"M":6,"U":9,"Z":12}[spec.local_symbol[2]]
+    year=2000+int(spec.local_symbol[3:])
+    expected_ym=f"{year:04d}{month:02d}"
+    if not str(work.expiry.iloc[0]).startswith(expected_ym):
+        raise QCError(f"NQ_EXPIRY_NOT_MATCHED_TO_CONTRACT: {work.expiry.iloc[0]} expected {expected_ym}")
     if not work.bar_size.astype(str).isin(["1 min", "1min", "1 mins", "1"]).all():
         raise QCError("NQ_BAR_SIZE_NOT_1MIN")
     if work.use_rth.isna().any() or not work.use_rth.eq(False).all():
@@ -151,6 +156,7 @@ def audit_standard_globex(frame: pd.DataFrame, spec: NQContract) -> tuple[pd.Dat
     missing=expected.difference(observed)
     # Bars during standard CLOSED hours are separate metadata/clock QA candidates.
     closed_observed=observed[~standard_globex_open(observed)]
+    closed_dates=pd.Series(globex_trade_dates(closed_observed)).value_counts()
     expected_dates=pd.Series(globex_trade_dates(expected),index=expected)
     present_dates=pd.Series(globex_trade_dates(present),index=present)
     missing_dates=pd.Series(globex_trade_dates(missing),index=missing)
@@ -168,12 +174,11 @@ def audit_standard_globex(frame: pd.DataFrame, spec: NQContract) -> tuple[pd.Dat
             "observed_standard_minutes":have,
             "missing_standard_minutes":absent,
             "coverage_fraction":have/total,
+            "observed_during_standard_closed_minutes":int(closed_dates.get(trade_date,0)),
             "status":"PASS_PROVISIONAL_HOLIDAY_UNVERIFIED" if absent==0 else
                      ("NO_BARS_SPECIAL_CALENDAR_REVIEW" if have==0 else "PARTIAL_SPECIAL_CALENDAR_REVIEW"),
         })
     summary=pd.DataFrame(coverage)
-    if not summary.empty:
-        summary["observed_during_standard_closed_minutes"]=len(closed_observed)
     gap_frame=pd.DataFrame(_missing_runs(missing,spec.local_symbol),
                            columns=["contract","start_utc","end_utc","missing_minutes","classification"])
     return summary,gap_frame

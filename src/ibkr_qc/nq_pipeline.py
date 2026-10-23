@@ -90,7 +90,13 @@ def source_contract_manifest(service, source_id: str) -> list[dict]:
 def run_nq_qc(service, config: NQRunConfig, *, cache_root: Path, output_root: Path) -> Path:
     config.validate()
     source_manifest=source_contract_manifest(service,config.source_folder_id)
-    selected=(source_manifest if config.max_contracts==0 else source_manifest[:config.max_contracts])
+    # Sort by contract year and H/M/U/Z quarter; PILOT uses the newest NQ
+    # contract (currently NQZ6), not alphabetic NQH5.
+    source_manifest=sorted(source_manifest,key=lambda e:(
+        int(e["contract"].local_symbol[3:]),
+        "HMUZ".index(e["contract"].local_symbol[2])
+    ))
+    selected=(source_manifest if config.max_contracts==0 else source_manifest[-config.max_contracts:])
     now=datetime.now(ZoneInfo("Asia/Taipei"))
     try:
         sha=subprocess.check_output(
@@ -169,8 +175,12 @@ def run_nq_qc(service, config: NQRunConfig, *, cache_root: Path, output_root: Pa
         not anchors.empty and "night_open_to_next_0500_ok" in anchors) else 0
     has_all_nine=(len(source_manifest)==EXPECTED_CONTRACT_COUNT and
                   len(successes)==EXPECTED_CONTRACT_COUNT)
+    closed=int(daily.observed_during_standard_closed_minutes.sum()) if (
+        not daily.empty and "observed_during_standard_closed_minutes" in daily) else 0
     status=("FAILED_SOURCE_CONTRACTS" if errors else
             "REVIEW_REQUIRED_MISSING_STANDARD_SESSION_MINUTES" if missing>0 else
+            "REVIEW_REQUIRED_CLOSED_SESSION_BARS" if closed>0 else
+            "REVIEW_REQUIRED_LARGE_PRICE_MOVES" if len(jumps)>0 else
             "PROVISIONAL_STANDARD_GRID_NO_GAPS")
     if not has_all_nine:
         status="REVIEW_REQUIRED_CONTRACT_SCOPE" if not errors else status
@@ -186,6 +196,7 @@ def run_nq_qc(service, config: NQRunConfig, *, cache_root: Path, output_root: Pa
         "globex_observed_standard_minutes":coverage-missing,
         "possible_missing_standard_minutes":missing,
         "possible_gap_intervals":len(gaps),
+        "observed_during_standard_closed_minutes":closed,
         "taipei_candidate_anchor_rows":len(anchors),
         "candidate_night_1500_to_next0500_eligible_rows":valid_anchor_count,
         "large_move_candidates":len(jumps),
