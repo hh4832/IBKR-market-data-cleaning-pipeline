@@ -106,3 +106,37 @@ The [2026-10-20 SOXX pilot](https://drive.google.com/drive/folders/1-vouLVPwmZil
 - v0.4: CME Globex ES/NQ futures adapter (quarterly contracts, expiry policies, 1-minute session completeness, roll provenance), distinct from equity calendar logic.
 
 See [v0.1.1 Development Prompt](docs/DEVELOPMENT_PROMPT_v0.1.1.md), [v0.1.0 prompt](docs/DEVELOPMENT_PROMPT_v0.1.0.md) and [AGENTS.md](AGENTS.md).
+
+
+## v0.2.0 — NQ futures Globex quality validation
+
+This is a SEPARATE NQ validation workflow in the original repository; the
+SOXX v0.1.1 workflow and its NYSE calendar are unchanged.
+
+- [Development prompt](docs/DEVELOPMENT_PROMPT_NQ_v0.2.0.md)
+- [NQ Colab runner](notebooks/run_nq_qc.ipynb)
+- [Existing NQ raw data](https://drive.google.com/drive/folders/1C0wfYpT8zioRmZxBnqO7d79-zJyD_S5w) — nine quarterly-contract subfolders, original consolidated.parquet is read only
+- [New NQ QC outputs](https://drive.google.com/drive/folders/1Kl7s_3Y02tGeEbLbzF-LhoyEMyCtG129) — new immutable run subfolder for each execution
+
+Launch the NQ Colab notebook, authorize Google Drive and mount My Drive for
+persistent, remote-MD5-checked cache. Start with MAX_CONTRACTS=1 (pilot).
+Change it to 0 only after reviewing a pilot, to audit all nine contracts.
+No IBKR login or new IBKR download is needed.
+
+NQ v0.2.0 validates UTC timestamp semantics, NQ/FUT/conId/expiry identity,
+1-minute OHLCV, exact duplicates, CME weekly Globex standard open hours
+(Sunday 18:00 to Friday 17:00 New York, with weekday 17:00–18:00 maintenance),
+DST conversion, candidate missing intervals and Taipei session anchor quotes.
+CME special-holiday / early-close / halt exceptions are NOT independently
+reconciled. Missing minutes are review candidates, not proven vendor errors.
+
+Per-contract output: normalized_by_contract, source_manifest.json,
+daily_globex_coverage.csv, possible_missing_intervals.csv,
+taipei_candidate_anchor_prices.csv, large_one_minute_moves.csv, run_info.json.
+
+IMPORTANT: No cross-contract stitching or roll selection, no 0050/TXF research
+in the QC pipeline, no interpolation and no lookahead beyond anchor timestamps.
+Taipei anchors are weekday candidates only, not confirmed TAIFEX trading days.
+IBKR bar start/end labeling remains unverified, therefore research_ready=false
+even for apparently complete contracts. CI tests are synthetic/offline; the real
+IBKR Drive files require the user's Colab OAuth validation.
