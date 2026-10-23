@@ -140,3 +140,16 @@ Taipei anchors are weekday candidates only, not confirmed TAIFEX trading days.
 IBKR bar start/end labeling remains unverified, therefore research_ready=false
 even for apparently complete contracts. CI tests are synthetic/offline; the real
 IBKR Drive files require the user's Colab OAuth validation.
+
+### NQ Colab Cache and Output paths verified on 2026-10-23
+
+The NQ cache is not at the MyDrive root. Its verified Drive hierarchy is:
+
+- Source NQ raw contracts: Drive folder ID `1C0wfYpT8zioRmZxBnqO7d79-zJyD_S5w` (read-only).
+- Existing cache folder ID: `1ExEXrUdnO1mh-MTalmJ8n-fLa362SX91`.
+- Cache parent folder ID: `16RheGRQUz-VWhvQJA_2Be2o7BM0zBU1u` (`00_Cache`).
+- Mounted `CACHE_DIR`: `/content/drive/MyDrive/00Quant_Research/00_Cache/IBKR_NQ_GLOBEX_QC_CACHE_V020`.
+- Archive destination ID: `1Kl7s_3Y02tGeEbLbzF-LhoyEMyCtG129` (`00Quant_Research/IBKR_NQ_Globex_QC`).
+- `OUTPUT_DIR=/content/ibkr_nq_qc_outputs` is ephemeral Colab staging, not the archive. The pipeline uses Drive API uploads to create each new immutable result subfolder.
+
+The Colab launcher checks the exact Drive parent chain against `root`, confirms the moved cache is mounted, and requires the existing Pilot NQZ6 cached parquet before running. It does not silently create a new empty cache when the path is incorrect. If folders are moved again, update the mounted path and verify the Drive IDs; do not point `OUTPUT_PARENT_ID` at an individual historical Pilot run.
