@@ -61,7 +61,8 @@ def normalize_nq(frame: pd.DataFrame, spec: NQContract) -> tuple[pd.DataFrame, d
     if work["expiry"].isna().any() or work["expiry"].astype(str).nunique() != 1:
         raise QCError("NQ_EXPIRY_MISMATCH")
     month={"H":3,"M":6,"U":9,"Z":12}[spec.local_symbol[2]]
-    year=2000+int(spec.local_symbol[3:])
+    year_code=spec.local_symbol[3:]
+    year=(2020 if len(year_code)==1 else 2000)+int(year_code)
     expected_ym=f"{year:04d}{month:02d}"
     if not str(work.expiry.iloc[0]).startswith(expected_ym):
         raise QCError(f"NQ_EXPIRY_NOT_MATCHED_TO_CONTRACT: {work.expiry.iloc[0]} expected {expected_ym}")
