@@ -16,7 +16,7 @@ SPEC=parse_contract_folder("NQZ6_563947726")
 
 
 def sample(when=None):
-    when=when or pd.date_range("2026-10-13T01:00:00Z",periods=5,freq="min")
+    when=when if when is not None else pd.date_range("2026-10-13T01:00:00Z",periods=5,freq="min")
     return pd.DataFrame({
         "timestamp_utc":when,"open":[101.] * len(when),
         "high":[102.] * len(when),"low":[99.] * len(when),

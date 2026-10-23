@@ -108,7 +108,7 @@ def standard_globex_open(utc_index: pd.DatetimeIndex) -> np.ndarray:
     mins=np.asarray(ny.hour)*60+np.asarray(ny.minute)
     # Sun >=18, Mon-Thu <17 or >=18, Fri <17; Saturday closed.
     return (((weekdays>=0)&(weekdays<=3)&(mins<17*60)) |
-            ((weekdays>=0)&(weekdays<=4)&(mins>=18*60)) |
+            ((weekdays>=0)&(weekdays<=3)&(mins>=18*60)) |
             ((weekdays==4)&(mins<17*60)) |
             ((weekdays==6)&(mins>=18*60)))
 
