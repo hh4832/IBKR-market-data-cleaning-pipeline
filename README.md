@@ -1,5 +1,28 @@
 # IBKR-market-data-cleaning-pipeline
 
+## IBKR FINAL GATE v0.3.0
+
+The one-shot FINAL GATE consolidates existing NQ/ES recovery bars and performs
+the full TSM/SOXX chunk audit. It produces only `GO`, `SCOPED_GO`, `NO_GO`, or
+`PILOT_ONLY`; already-passed downloader row checks are not repeatedly rerun as a
+separate project. Conflicting timestamp/OHLCV data fail closed. Remaining
+unresolved recovery minutes, exchange-calendar candidates and corporate-action
+candidates are written to explicit exclusion/review files.
+
+[Open the FINAL GATE notebook in Colab](https://colab.research.google.com/github/hh4832/IBKR-market-data-cleaning-pipeline/blob/main/notebooks/run_ibkr_final_gate.ipynb)
+
+Start with the notebook's small pilot to verify OAuth, paths and cache. Then set
+`PILOT = False` and run once. The full run reads existing Drive source objects,
+creates a new immutable result under `00_Quant_Research_Hub`, and never edits raw
+Parquet, downloader checkpoints or previous QA results. A pilot cannot be used
+as a backtest baseline.
+
+Full-run outputs include `final_gate_manifest.json`, `final_gate_summary.csv`,
+`FINAL_VERDICT.txt`, per-contract normalized NQ/ES Parquet, full normalized
+TSM/SOXX Parquet, recovery-window records, unresolved exclusions, NYSE missing
+session candidates and corporate-action candidates. The manifest records source
+file IDs, SHA256, code commit and the exact Drive folder IDs.
+
 **v0.1.1 | SOXX first | immutable-source quality audit with persistent checkpoint/resume, extended-hours diagnostics and full-session calendar gaps.**
 
 [Original data folder](https://drive.google.com/drive/folders/1jLOYnUhWx6coNV6eqYnjUAeeHZPP6aMh) → `IKBR` (spelling in Drive) → `raw/SOXX/SOXX_12658194/chunks`.

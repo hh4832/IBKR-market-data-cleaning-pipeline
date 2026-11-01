@@ -36,3 +36,19 @@ All NQ QA uses per-contract identity and UTC-aware Globex (NOT NYSE/stock
 sessions); flag exceptional holidays/halts instead of asserting missing data
 is definitely corrupt. DST via IANA zones. Never stitch quarterly contracts,
 guess bar-label convention, interpolate, or claim research_ready=true.
+
+## v0.3.0 — one-shot IBKR FINAL GATE
+
+- Authorized instruments are NQ, ES, TSM ADR and SOXX ETF only. SOX/SDL and
+  continuous futures remain out of scope.
+- The gate reads the existing consolidated futures, staged recovery outputs and
+  equity chunks. It may publish a new immutable normalized snapshot but never
+  modifies raw data, downloader checkpoints or prior QA runs.
+- Exact duplicate rows may be removed. A conflicting same-timestamp OHLCV row
+  is `NO_GO`; never choose first/last. Unresolved recovery minutes and equity
+  calendar/corporate-action candidates must be explicit exclusions under
+  `SCOPED_GO`.
+- A pilot is operational proof only and can never publish a research baseline.
+  A full run must emit a manifest, per-instrument verdict, SHA256 and exclusions.
+- Do not add another general validation layer after this gate. Future runs pin
+  the published manifest and perform only incremental-data checks.
