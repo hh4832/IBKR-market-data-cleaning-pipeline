@@ -182,16 +182,56 @@ def _merge_exact(frames: Iterable[pd.DataFrame]) -> tuple[pd.DataFrame, int]:
     return merged, before - len(merged)
 
 
+def _select_recovery_attempts(attempts: dict[str, list[dict]]) -> pd.DataFrame:
+    rows = []
+    status_rank = {
+        "OBSERVED_ALL_CANDIDATE_MINUTES": 3,
+        "PARTIAL_UNRESOLVED": 2,
+        "FAILED_UNRESOLVED": 1,
+    }
+    for window_id, history in attempts.items():
+        # Recovery runs are append-only attempts. A newer run may improve an
+        # earlier partial/failed result, so differing manifests are not raw-bar
+        # conflicts. Prefer the least unresolved result, then the strongest
+        # status, most returned rows and latest manifest. Actual OHLCV conflicts
+        # still fail closed later in _merge_exact.
+        best = max(
+            history,
+            key=lambda x: (
+                -x["unresolved_minutes"],
+                status_rank.get(str(x["recovery_status"]), 0),
+                x["rows"],
+                str(x.get("result_file_modified_time") or ""),
+            ),
+        ).copy()
+        best["attempt_count"] = len(history)
+        best["reconciliation"] = (
+            "SINGLE_ATTEMPT" if len(history) == 1
+            else "BEST_AVAILABLE_ATTEMPT_SELECTED_RAW_BARS_STILL_CONFLICT_CHECKED"
+        )
+        best["status_history"] = "|".join(sorted({
+            str(x.get("recovery_status") or "") for x in history
+        }))
+        best["unresolved_history"] = "|".join(map(str, sorted({
+            int(x.get("unresolved_minutes") or 0) for x in history
+        })))
+        best["saved_sha256_history"] = "|".join(sorted({
+            str(x.get("saved_sha256") or "") for x in history
+        }))
+        rows.append(best)
+    frame = pd.DataFrame(sorted(rows, key=lambda x: x["window_id"]))
+    return frame
+
+
 def _recovery_summary(service, root_id: str, cache: Path) -> tuple[pd.DataFrame, list[dict]]:
     result_files = [x for x in _walk(service, root_id) if x["name"] == "results.json"]
-    rows: dict[str, dict] = {}
+    attempts: dict[str, list[dict]] = {}
     for item in tqdm(result_files, desc="Recovery result manifests", unit="file"):
         for result in _download_json(service, item, cache):
             window = result.get("window") or {}
             window_id = str(window.get("id") or "")
             if not window_id:
                 raise QCError("RECOVERY_WINDOW_ID_MISSING")
-            previous = rows.get(window_id)
             compact = {
                 "window_id": window_id,
                 "contract": window.get("localSymbol"),
@@ -202,11 +242,11 @@ def _recovery_summary(service, root_id: str, cache: Path) -> tuple[pd.DataFrame,
                 "unresolved_minutes": int(result.get("unresolved_minutes") or 0),
                 "rows": int(result.get("rows") or 0),
                 "saved_sha256": result.get("saved_sha256"),
+                "result_file_id": item["id"],
+                "result_file_modified_time": item.get("modifiedTime"),
             }
-            if previous and previous != compact:
-                raise QCError(f"RECOVERY_WINDOW_CONFLICT: {window_id}")
-            rows[window_id] = compact
-    frame = pd.DataFrame(sorted(rows.values(), key=lambda x: x["window_id"]))
+            attempts.setdefault(window_id, []).append(compact)
+    frame = _select_recovery_attempts(attempts)
     return frame, result_files
 
 
